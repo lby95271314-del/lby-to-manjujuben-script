@@ -1,0 +1,11 @@
+{
+  "target_seconds": [60, 120],
+  "speech_chars_per_second": 4,
+  "pause_seconds_per_dialogue": 0.5,
+  "max_scenes": 3,
+  "max_spoken_chars": 300,
+  "body_chars_range": null,
+  "budget_policy": "warn",
+  "aliases": {},
+  "voice_tags": {"inner": "OS", "remote": "VO", "offscreen": "画外"}
+}

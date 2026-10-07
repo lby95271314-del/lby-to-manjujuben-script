@@ -2,6 +2,8 @@
 
 在重组长篇、设计首集、反转、爽点或情绪推进时使用。方法来自对用户提供的编剧参考图的归纳与取舍；它们是创作决策工具，不是固定秒数、固定数量或机器验收规则。普通格式修正无需加载整份参考。
 
+黄金开头与节奏改写优先读 [opening-rhythm.md](opening-rhythm.md)，整篇改编与跨集记录见 [adaptation-workflow.md](adaptation-workflow.md)，具体反转机制见 [reversal-library.md](reversal-library.md)，人物与实际台词见 [character-dialogue.md](character-dialogue.md)。按当前任务读取，不要求一次加载全部。
+
 ## 1. 从原著事件改成戏剧任务
 
 先确定改编要保留的核心人物、关系、世界规则、悬疑因果、情感内核与结局；用户明确要求重新设定时说明变动。只收到节选就以该材料为范围，未读到的结局或伏笔写明待补，不凭空声称完整掌握。
@@ -106,3 +108,5 @@
 需要诊断某集时，可在单独创作资料中简记 `本集任务｜入场状态｜关键预期｜信息差｜刺激与反应｜实际兑现｜集尾问题｜下集承接`，只填写有意义的部分。卡片不进入剧本解析输入，不添加额外蓝红标签，不声称能由字符串规则判断戏是否好看。
 
 本技能样例的应用分析见 [story-methods-example.md](story-methods-example.md)。
+
+小说片段到两集正文、伏笔回收与双层揭示的完整演示见 [adaptation-example.md](adaptation-example.md)。示例与反转库均是创作参考，不等于机器已经验证其戏剧效果。

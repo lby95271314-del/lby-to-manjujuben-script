@@ -10,10 +10,10 @@ description: 将小说、网文或故事改编为漫剧或短剧剧本，处理�
 ## 工作流程
 
 1. **确定项目要求**：读取已有的目标媒介、改编范围、总集数、单集时长、输出模式与制作预算。缺失信息会改变剧情结构时集中询问；其余情况说明假设后继续。参数与完整交稿包要求见 [references/project-brief.md](references/project-brief.md)。
-2. **通读、定开头与切集**：提取原著事件、人物目标、行动与阻碍，按戏剧任务重组，不机械地一章一集。新写首集、黄金开头或节奏重写时优先读 [references/opening-rhythm.md](references/opening-rhythm.md)：从主线找可见事件与迫近代价，让主角尽快行动，再按变化、反馈和后续任务组织节拍。整篇或多集改编按 [references/adaptation-workflow.md](references/adaptation-workflow.md) 从故事概述推进到分集细纲、分场任务；已有细纲则检查后直接落稿。判断删留、扩写关键过程、原创补戏或来源追踪时读 [references/adaptation-decisions.md](references/adaptation-decisions.md)；区分故事与追剧发动机，追踪开头承诺。局部改稿检查后续依赖。爽点或情绪设计见 [references/story-methods.md](references/story-methods.md)。默认目标 60–120 秒、语速 4 个计数单位/秒，均可配置；不要由固定字数断言成片时长。
+2. **逐章拆解、故事线筛选与重排**：接收小说原文后，先读 [references/chapter-reordering.md](references/chapter-reordering.md)，按原章节顺序详细拆故事线与剧情，以时间、空间、对话话题、任务阶段和信息/视角变化划段；保留可回查定位。再按故事线与因果记录留删、混编混排和呈现序列，避免先写剧本再补拆解。提取原著事件、人物目标、行动与阻碍，按戏剧任务重组，不机械地一章一集。新写首集、黄金开头或节奏重写时优先读 [references/opening-rhythm.md](references/opening-rhythm.md)：从主线找可见事件与迫近代价，让主角尽快行动，再按变化、反馈和后续任务组织节拍。整篇或多集改编按 [references/adaptation-workflow.md](references/adaptation-workflow.md) 从故事概述推进到分集细纲、分场任务；已有细纲则检查后直接落稿。判断删留、扩写关键过程、原创补戏或来源追踪时读 [references/adaptation-decisions.md](references/adaptation-decisions.md)；区分故事与追剧发动机，追踪开头承诺。局部改稿检查后续依赖。爽点或情绪设计见 [references/story-methods.md](references/story-methods.md)。默认目标 60–120 秒、语速 4 个计数单位/秒，均可配置；不要由固定字数断言成片时长。
 3. **分场与写稿**：按 [references/format-spec.md](references/format-spec.md) 写集、场、动作、对白和节拍；把细纲中的意图转成真实台词，按 [references/character-dialogue.md](references/character-dialogue.md) 核对人物诉求、策略、声音差异和潜台词。保持地点、人物及道具名称稳定，分别考虑场次数与独立地点数。正文范例见 [assets/sample-script.md](assets/sample-script.md)；小说片段到两集正文的完整演示见 [references/adaptation-example.md](references/adaptation-example.md)。
 4. **检查改编因果与反转**：角色行动必须有知情、证据或能力依据。识别、强化或新增反转时读取 [references/reversal-library.md](references/reversal-library.md)，按原著支点选择机制，不按数量硬塞；检查原预期、可回看伏笔、揭示、反应与后果。多集稿在创作资料中追踪伏笔兑现和末态承接，必要模板见改编流程。允许删并支线与工具人；保留核心人设、重要关系、世界规则、悬疑因果、情感内核与结局。只收到节选时标明范围和待补内容。
-5. **校验并修复**：运行下面的命令；错误需修复，预算提醒需判断是否调整或说明。JSON 报告按集、场、行定位问题，并分别统计正文、配音与注释。脚本只验证结构和预算，不能证明剧情质量。
+5. **成稿开头自检、校验并修复**：完整写出本批剧本后，按 chapter-reordering.md 第6节复查首集实际开头：看点、当前行动、理解门槛、主线关联、承接与兑现；有问题先修开头及受影响的全集因果与时长，再复查，不能用候选说明代替正文检查。运行下面的命令；错误需修复，预算提醒需判断是否调整或说明。JSON 报告按集、场、行定位问题，并分别统计正文、配音与注释。脚本只验证结构和预算，不能证明剧情质量。
 6. **导出与交付**：从同一份中间稿导出所需版本，交稿版隐藏分析标注，保留实际字幕与声音/时间标记。交付中间稿、Word 和必要的校验结果；输出路径遵循当前任务的文件要求。
 
 命令从技能目录运行，或使用脚本绝对路径（仅需 Python 3.8+ 标准库；`py` 不可用时用 `python`）：

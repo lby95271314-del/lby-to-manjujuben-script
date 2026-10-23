@@ -27,6 +27,9 @@ class ScriptTests(unittest.TestCase):
     def codes(self, result):
         return {i['code'] for i in result['issues'] if i['severity'] == 'error'}
 
+    def notices(self, result):
+        return {i['code'] for i in result['issues']}
+
     def test_complete_sample_is_valid_and_timed(self):
         result = self.check_sample()
         self.assertTrue(result['ok'], result['issues'])
@@ -86,6 +89,31 @@ class ScriptTests(unittest.TestCase):
         config['budget_policy'] = 'error'
         self.assertIn('spoken_budget', self.codes(parse_script(SAMPLE, config)))
 
+    def test_dialogue_length_limit_is_configurable(self):
+        config = load_config()
+        self.assertNotIn('dialogue_length', {i['code'] for i in parse_script(SAMPLE, config)['issues']})
+        config['max_dialogue_chars'] = 4
+        result = parse_script(SAMPLE, config)
+        self.assertTrue(result['ok'], '字幕宽度超限只作提醒，不阻止导出')
+        self.assertIn('dialogue_length', {i['code'] for i in result['issues']})
+
+    def test_pilot_seconds_overrides_first_episode_only(self):
+        two = PLAIN + PLAIN.replace('# 第一集', '# 第二集').replace('## 1-1', '## 2-1')
+        config = load_config()
+        config['budget_policy'] = 'error'
+        config['target_seconds'] = [1000, 2000]
+        config['pilot_seconds'] = [0, 1000]
+        result = parse_script(two, config, 'submission')
+        dirty = {i['episode'] for i in result['issues'] if i['code'] == 'duration_budget'}
+        self.assertEqual(dirty, {2}, '首集走 pilot_seconds，其余集仍按 target_seconds')
+
+    def test_opening_action_delay_is_reported(self):
+        lines = SAMPLE.splitlines()
+        first_content = next(i for i, line in enumerate(lines) if line.startswith('△'))
+        lines.insert(first_content, '△ 空镜。山路没有路灯。')
+        self.assertIn('opening_action', self.notices(self.check_sample('\n'.join(lines))))
+        self.assertNotIn('opening_action', self.notices(self.check_sample(SAMPLE)))
+
     def test_alias_and_client_voice_convention(self):
         config = load_config()
         config['aliases'] = {'小甲': '甲'}
@@ -100,6 +128,9 @@ class ScriptTests(unittest.TestCase):
             target = Path(folder) / 'config.json'
             for change in ({'speech_chars_per_second': 0}, {'max_scenes': True},
                            {'unknown': 1}, {'target_seconds': [120, 60]},
+                           {'max_dialogue_chars': 0}, {'max_dialogue_chars': True},
+                           {'pilot_seconds': [300, 120]}, {'pilot_seconds': [120]},
+                           {'pilot_episodes': 0}, {'pilot_episodes': True},
                            {'aliases': {'甲': '乙', '乙': '甲'}},
                            {'voice_tags': {'inner': 'OS', 'remote': 'OS', 'offscreen': '画外'}}):
                 target.write_text(json.dumps(change), encoding='utf-8')
@@ -201,6 +232,50 @@ class ScriptTests(unittest.TestCase):
         self.assertIn('punctuation', {i['code'] for i in result['issues']})
         from build_docx import document_xml
         self.assertIn('甲（OS）:', document_xml(result, 'submission'))
+
+    def test_hook_type_prefix_is_checked(self):
+        typed = PLAIN.replace('【钩子】来电尚未结束，下一集兑现。', '【钩子】翻面｜来电尚未结束，下一集兑现。')
+        self.assertNotIn('hook_type', self.notices(parse_script(typed, input_mode='submission')))
+        self.assertIn('hook_type', self.notices(parse_script(PLAIN, input_mode='submission')))
+
+    def test_pilot_episodes_extends_range_beyond_first_episode(self):
+        second = PLAIN.replace('# 第一集', '# 第二集').replace('## 1-1', '## 2-1')
+        third = PLAIN.replace('# 第一集', '# 第三集').replace('## 1-1', '## 3-1')
+        config = load_config()
+        config['budget_policy'] = 'error'
+        config['target_seconds'] = [1000, 2000]
+        config['pilot_seconds'] = [0, 1000]
+        config['pilot_episodes'] = 2
+        result = parse_script(PLAIN + second + third, config, 'submission')
+        dirty = {i['episode'] for i in result['issues'] if i['code'] == 'duration_budget'}
+        self.assertEqual(dirty, {3}, 'pilot_episodes=2 时前两集走 pilot_seconds')
+
+    def test_ending_form_warns_when_last_beat_has_no_dialogue(self):
+        text = PLAIN.replace('甲（OS）：一二三四\n乙（VO，电话）：五六七八\n【钩子】',
+                             '△ 甲举起纸条，又放下。\n△ 乙转身离去。\n【钩子】')
+        self.assertIn('ending_form', self.notices(parse_script(text, input_mode='submission')))
+        self.assertNotIn('ending_form', self.notices(parse_script(PLAIN, input_mode='submission')))
+
+    def test_opening_capacity_warnings(self):
+        head = '# 第一集【0min40s】\n## 1-1 客厅-内-日\n出场人物：甲\n'
+        cold = head + '【节拍】A｜同步动作=25｜独立动作=0｜停顿=0\n△ 甲推门进入，环视房间，逐一检查抽屉。\n【节拍】B｜同步动作=2｜独立动作=0｜停顿=0\n甲：有人吗。\n【钩子】悬念｜答案下一集给出。\n'
+        self.assertIn('opening_silence', self.notices(parse_script(cold, input_mode='submission')))
+        gap = head + '【节拍】A｜同步动作=2｜独立动作=0｜停顿=0\n甲：有人吗。\n【节拍】B｜同步动作=15｜独立动作=0｜停顿=0\n△ 甲翻看桌上的文件，眉头越皱越紧。\n【节拍】C｜同步动作=2｜独立动作=0｜停顿=0\n甲：这是什么。\n【钩子】悬念｜答案下一集给出。\n'
+        self.assertIn('opening_respeech', self.notices(parse_script(gap, input_mode='submission')))
+
+    def test_recap_suspect_detects_first_line_overlap(self):
+        second = PLAIN.replace('# 第一集', '# 第二集').replace('## 1-1', '## 2-1')
+        self.assertIn('recap_suspect', self.notices(parse_script(PLAIN + second, input_mode='submission')))
+        self.assertNotIn('recap_suspect', self.notices(parse_script(PLAIN, input_mode='submission')))
+
+    def test_density_band_warns_outside_stage_range(self):
+        config = load_config()
+        config['speech_chars_per_second'] = 5
+        dense = ('# 第一集【0min5s】\n## 1-1 客厅-内-日\n出场人物：甲\n'
+                 '【节拍】A｜同步动作=0｜独立动作=0｜停顿=0\n甲：一二三四五六七八九十\n'
+                 '【钩子】悬念｜答案下一集给出。\n')
+        self.assertIn('density_band', self.notices(parse_script(dense, config)))
+        self.assertIn('density_band', self.notices(parse_script(PLAIN, input_mode='submission')))
 
 
 if __name__ == '__main__':

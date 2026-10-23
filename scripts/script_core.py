@@ -9,14 +9,17 @@ import unicodedata
 from pathlib import Path
 
 DEFAULT_CONFIG = {
-    'target_seconds': [60, 120], 'speech_chars_per_second': 4,
+    'target_seconds': [45, 80], 'speech_chars_per_second': 4,
     'pause_seconds_per_dialogue': 0.5, 'max_scenes': 3,
     'max_spoken_chars': 300, 'body_chars_range': None,
+    'max_dialogue_chars': None, 'pilot_seconds': None,
+    'pilot_episodes': 1,
     'budget_policy': 'warn', 'aliases': {},
     'voice_tags': {'inner': 'OS', 'remote': 'VO', 'offscreen': '画外'},
 }
 BLUE = set('揭示 伏笔 冲突 关系转折 承诺 兑现 铺垫 反转 收束'.split())
 RED = set('虐点 爽点 悬念 压迫 期待 反差'.split())
+HOOK_TYPES = set('翻面 悬念 冲突 代价 新目标 关系推进'.split())
 EPISODE_RE = re.compile(r'^# 第([0-9一二三四五六七八九十百零两]+)集【([0-9]+)min([0-9]+)s】$')
 SCENE_RE = re.compile(r'^## ([0-9]+)-([0-9]+) (.+)-(内|外)-(日|夜|晨|傍晚|黄昏)$')
 DIALOGUE_RE = re.compile(r'^(!?)([^：:（）]+)(?:（([^）]*)）)?([：:])(.*)$')
@@ -65,11 +68,11 @@ def load_config(path=None):
             raise ValueError(name + ' 数值范围不合法')
     number(config['speech_chars_per_second'], 'speech_chars_per_second', True)
     number(config['pause_seconds_per_dialogue'], 'pause_seconds_per_dialogue')
-    for name in ('max_scenes', 'max_spoken_chars'):
+    for name in ('max_scenes', 'max_spoken_chars', 'max_dialogue_chars'):
         value = config[name]
         if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 1):
             raise ValueError(name + ' 必须是正整数或 null')
-    for name in ('target_seconds', 'body_chars_range'):
+    for name in ('target_seconds', 'body_chars_range', 'pilot_seconds'):
         value = config[name]
         if value is not None:
             if not isinstance(value, list) or len(value) != 2:
@@ -78,6 +81,10 @@ def load_config(path=None):
                 number(entry, name)
             if value[0] > value[1]:
                 raise ValueError(name + ' 下限不能超过上限')
+    pilot_episodes = config['pilot_episodes']
+    if pilot_episodes is not None and (isinstance(pilot_episodes, bool) or not isinstance(pilot_episodes, int)
+                                       or pilot_episodes < 1):
+        raise ValueError('pilot_episodes 必须是正整数或 null')
     if config['budget_policy'] not in ('warn', 'error'):
         raise ValueError('budget_policy 必须是 warn 或 error')
     aliases = config['aliases']
@@ -172,6 +179,12 @@ def parse_script(text, config=None, input_mode='analysis'):
         if timeline:
             issue('unclosed_time', '本集时间段未闭合：' + timeline[0], timeline[1])
             timeline = None
+        closing_beats = [b for s in episode['scenes'] for b in s['beats'] if b['content']]
+        if closing_beats:
+            final_beat = closing_beats[-1]
+            if final_beat['dialogue_lines'] == 0 and not final_beat['close']:
+                issue('ending_form', '集尾建议收在一句台词（或【收尾】标记）上；当前末拍只有动作或字幕',
+                      final_beat['line'], 'warning', episode['number'], '')
         if not episode['hook']:
             issue('missing_hook', '缺少【钩子】说明；人工核对实际正文的集尾悬念与兑现计划', episode['line'], 'warning')
 
@@ -303,6 +316,10 @@ def parse_script(text, config=None, input_mode='analysis'):
                     issue('note_length', '边注建议 6–14 个计数单位', line_no, 'warning')
             elif kind == 'hook':
                 episode['hook'] = True
+                hook_head = value.split('｜', 1)[0].strip() if '｜' in value else ''
+                if hook_head not in HOOK_TYPES:
+                    issue('hook_type', '【钩子】建议写 类型｜说明，类型从 翻面/悬念/冲突/代价/新目标/关系推进 中选',
+                          line_no, 'warning')
             event(kind, raw, line_no, value)
             continue
         if raw == '【收尾】':
@@ -350,6 +367,10 @@ def parse_script(text, config=None, input_mode='analysis'):
                 issue('unknown_speaker', '说话人未列入本场人物：' + name, line_no)
             if not body:
                 issue('empty_dialogue', '台词不能为空', line_no)
+            limit = config['max_dialogue_chars']
+            if limit is not None and count_chars(body) > limit:
+                issue('dialogue_length', '单条台词 {} 字，超过单行字幕上限 {} 字；拆句或改为动作'.format(
+                    count_chars(body), limit), line_no, 'warning')
             voice = direction.split('，', 1)[0]
             tags = config['voice_tags']
             if voice in {'OS', 'VO', '画外'} and voice not in tags.values():
@@ -404,11 +425,107 @@ def parse_script(text, config=None, input_mode='analysis'):
             ep_issue('spoken_budget', '配音量超出项目预算：{}'.format(spoken))
         if config['body_chars_range'] is not None and not config['body_chars_range'][0] <= ep['body_chars'] <= config['body_chars_range'][1]:
             ep_issue('body_budget', '正文量偏离项目范围：{}'.format(ep['body_chars']))
-        target = config['target_seconds']
+        pilot_range = config['pilot_seconds']
+        pilot_span = config['pilot_episodes'] or 1
+        target = pilot_range if (pilot_range and ep['number'] <= pilot_span) else config['target_seconds']
         if target and (estimate > target[1] or (complete and estimate < target[0])):
             ep_issue('duration_budget', '估算时长偏离目标范围：{:.2f} 秒'.format(estimate))
         if complete and abs(estimate - ep['declared_seconds']) > max(5, ep['declared_seconds'] * 0.15):
             ep_issue('duration_title', '标题时长与估算差距较大，请核对：{:.2f} 秒'.format(estimate))
+        if complete and estimate > 0:
+            density = spoken / estimate
+            if density > 4.5 or density < 1.4:
+                ep_issue('density_band', '估算密度 {:.2f} 字/秒（含静默）超出常见分档 1.4–4.5；'
+                                        '试看段 3.5–4.5、中段 2.2–3.2、情感慢节奏 1.4–2.0，请确认项目定位'.format(density))
+
+    # 开场延迟检查：实测参考片首句台词普遍在 3 秒内出现，等于最多一条动作起手。
+    leading = {}
+    for item in events:
+        if item['episode'] is None or item['kind'] not in ('action', 'subtitle', 'dialogue'):
+            continue
+        state = leading.setdefault(item['episode'], {'run': 0, 'done': False})
+        if state['done']:
+            continue
+        if item['kind'] == 'action':
+            state['run'] += 1
+        else:
+            state['done'] = True
+    for ep_no, state in leading.items():
+        if state['run'] >= 2:
+            ep_line = next((e['line'] for e in episodes if e['number'] == ep_no), 1)
+            issue('opening_action', '开场连续 {} 条动作后才出现台词；参考片首句多在 3 秒内出现，'
+                                   '建议把对白或悬念字幕提到第一拍'.format(state['run']), ep_line, 'warning', ep_no, '')
+
+    # 开场容量检查：冷开场静默与首句后二次开口（容量规则见 references/format-spec.md 集尾段）。
+    rate = config['speech_chars_per_second']
+
+    def beat_seconds(b):
+        timing = b['timing'] or {}
+        pause = timing.get('停顿', b['dialogue_lines'] * config['pause_seconds_per_dialogue'])
+        speech = b['spoken_chars'] / rate + pause
+        return max(speech, timing.get('同步动作', 0)) + timing.get('独立动作', 0)
+
+    scene_events = {}
+    for item in events:
+        if item['scene'] is not None:
+            scene_events.setdefault(item['scene'], []).append(item)
+    for ep in episodes:
+        clock = 0.0
+        first_speech = None
+        first_lone = False
+        gap_after_first = None
+        prev_scene = None
+        for s in ep['scenes']:
+            beats = s['beats']
+            room = scene_events.get(s['id'], [])
+            for index, b in enumerate(beats):
+                start = clock
+                clock += beat_seconds(b)
+                upper = beats[index + 1]['line'] if index + 1 < len(beats) else None
+                lines = [e for e in room if e['line'] >= b['line']
+                         and (upper is None or e['line'] < upper) and e['kind'] in ('dialogue', 'subtitle')]
+                if not (lines and b['content']):
+                    continue
+                if first_speech is None:
+                    first_speech = start
+                    first_lone = len(lines) == 1
+                elif gap_after_first is None and prev_scene == s['id'] and first_lone:
+                    gap_after_first = start - first_speech
+                prev_scene = s['id']
+        if first_speech is not None and first_speech > 20:
+            issue('opening_silence', '开场约 {:.0f} 秒才出现第一句台词或悬念字幕；超过 20 秒的冷开场静默'
+                                     '必须靠可见事件支撑，且全片仅限一次'.format(first_speech),
+                  ep['line'], 'warning', ep['number'], '')
+        if gap_after_first is not None and gap_after_first > 10:
+            issue('opening_respeech', '首句之后约 {:.0f} 秒才再次出现台词或悬念字幕；建议 10 秒内二次开口，'
+                                      '或用可见事件撑住静默段'.format(gap_after_first),
+                  ep['line'], 'warning', ep['number'], '')
+
+    # 跨集软复述检查：下一集首句与上一集对白逐字重叠时提醒（承接句除外）。
+    def hanzi_4grams(text):
+        chars = [ch for ch in text if '\u4e00' <= ch <= '\u9fff']
+        return {''.join(chars[i:i + 4]) for i in range(len(chars) - 3)} if len(chars) >= 4 else set()
+
+    speech_events = {}
+    for item in events:
+        if item['kind'] in ('dialogue', 'subtitle') and item['episode'] is not None:
+            speech_events.setdefault(item['episode'], []).append(item)
+    for earlier, later in zip(episodes, episodes[1:]):
+        if later['number'] != earlier['number'] + 1:
+            continue
+        later_lines = speech_events.get(later['number'], [])
+        earlier_lines = speech_events.get(earlier['number'], [])
+        if not later_lines or not earlier_lines:
+            continue
+        first = later_lines[0]
+        pool = set()
+        for item in earlier_lines:
+            pool |= hanzi_4grams(item['payload'])
+        shared = hanzi_4grams(first['payload']) & pool
+        if shared:
+            issue('recap_suspect', '第{}集首句与上一集对白逐字重叠（{}），疑似前情复述；承接句除外，请人工确认'.format(
+                later['number'], '、'.join(sorted(shared)[:3])), first['line'], 'warning',
+                later['number'], first['scene'])
     return {'events': events, 'episodes': episodes, 'issues': issues, 'summary': summaries,
             'ok': not any(i['severity'] == 'error' for i in issues), 'input_mode': input_mode,
             'config': config}
